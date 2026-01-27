@@ -6,7 +6,6 @@ providing packages and dev shells.
 ## Layout
 
 - `clusters/` - script collections (audio, pdf, ocr, planning, fs-tools, conversion)
-- `packages/` - Nix packages (e.g. MinerU)
 - `devshells/` - per-cluster devShells
 - `docs/` - notes and legacy docs
 
