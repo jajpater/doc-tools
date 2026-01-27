@@ -40,8 +40,6 @@
           audio-tools = mkScriptsPackage "audio-tools" ./clusters/audio;
           pdf-tools = mkScriptsPackage "pdf-tools" ./clusters/pdf-tools;
           ocr-tools = mkScriptsPackage "ocr-tools" ./clusters/ocr;
-          planning-tools = mkScriptsPackage "planning-tools" ./clusters/planning;
-          fs-tools = mkScriptsPackage "fs-tools" ./clusters/fs-tools;
           conversion-tools = mkScriptsPackage "conversion-tools" ./clusters/conversion;
 
           mineru = pkgs.callPackage ./packages/mineru.nix { };
@@ -63,8 +61,6 @@
               self.packages.${system}.audio-tools
               self.packages.${system}.pdf-tools
               self.packages.${system}.ocr-tools
-              self.packages.${system}.planning-tools
-              self.packages.${system}.fs-tools
               self.packages.${system}.conversion-tools
             ];
           };
