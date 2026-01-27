@@ -12,7 +12,7 @@ pkgs.mkShell {
       python3
       tesseract
       ocrmypdf
-      poppler_utils
+      poppler-utils
       img2pdf
     ])
     ++ lib.flatten [
