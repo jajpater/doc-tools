@@ -63,6 +63,7 @@
           audio = import ./devshells/audio.nix { inherit pkgs; };
           pdf-tools = import ./devshells/pdf-tools.nix { inherit pkgs; };
           ocr = import ./devshells/ocr.nix { inherit pkgs; };
+          conversion = import ./devshells/conversion.nix { inherit pkgs; };
           planning = import ./devshells/planning.nix { inherit pkgs; };
           default = pkgs.mkShell {
             packages = with pkgs; [
