@@ -1,4 +1,5 @@
 { lib
+, pkgs
 , python3Packages
 , fetchurl
 , torch ? null
@@ -102,6 +103,7 @@ python3Packages.buildPythonApplication rec {
   };
 
   propagatedBuildInputs = lib.unique (baseDeps ++ selectedExtras);
+  nativeBuildInputs = [ pkgs.ninja ];
 
   pythonImportsCheck = [ "mineru" ];
 
