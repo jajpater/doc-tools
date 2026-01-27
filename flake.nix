@@ -42,19 +42,6 @@
           ocr-tools = mkScriptsPackage "ocr-tools" ./clusters/ocr;
           conversion-tools = mkScriptsPackage "conversion-tools" ./clusters/conversion;
 
-          mineru = pkgs.callPackage ./packages/mineru.nix { };
-          mineru-full = pkgs.callPackage ./packages/mineru.nix {
-            extras = [ "vlm" "pipeline" "api" "gradio" "vllm" "lmdeploy" ];
-          };
-          mineru-cuda = pkgs.callPackage ./packages/mineru.nix {
-            extras = [ "vlm" "pipeline" "api" "gradio" "vllm" "lmdeploy" ];
-            torch = if pkgs.python3Packages ? torchWithCuda then pkgs.python3Packages.torchWithCuda else null;
-          };
-          mineru-rocm = pkgs.callPackage ./packages/mineru.nix {
-            extras = [ "vlm" "pipeline" "api" "gradio" "vllm" "lmdeploy" ];
-            torch = if pkgs.python3Packages ? torchWithRocm then pkgs.python3Packages.torchWithRocm else null;
-          };
-
           all-scripts = pkgs.symlinkJoin {
             name = "all-scripts";
             paths = [
@@ -77,7 +64,6 @@
           pdf-tools = import ./devshells/pdf-tools.nix { inherit pkgs; };
           ocr = import ./devshells/ocr.nix { inherit pkgs; };
           planning = import ./devshells/planning.nix { inherit pkgs; };
-          mineru = import ./devshells/mineru.nix { inherit pkgs; };
           default = pkgs.mkShell {
             packages = with pkgs; [
               git

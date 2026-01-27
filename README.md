@@ -27,22 +27,6 @@ List available outputs:
 nix flake show
 ```
 
-## MinerU
-
-Packages:
-- `.#mineru` (core/CPU)
-- `.#mineru-full` (core + extras)
-- `.#mineru-cuda` (extras + CUDA, desktop)
-- `.#mineru-rocm` (extras + ROCm, laptop)
-
-Example:
-```
-nix build .#mineru
-```
-
-If a Python dependency is missing from nixpkgs, it's simply skipped. Use a
-devshell + `uv` or a venv to install missing Python deps locally.
-
 ## OCR languages
 
 The OCR devshell installs common Tesseract language packs when available:
