@@ -106,6 +106,7 @@ python3Packages.buildPythonApplication rec {
   nativeBuildInputs = [ pkgs.ninja ];
   dontBuild = true;
   buildPhase = ":";
+  catchConflicts = false;
 
   pythonImportsCheck = [ "mineru" ];
 
