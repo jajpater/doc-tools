@@ -272,7 +272,7 @@ def main() -> int:
 
     if args.backend == "whisper":
         segments, info = transcribe_openai_whisper(
-            audio_path, args.model, device, compute, vad_filter=not args.no_vad
+            audio_path, args.model, device, compute, not args.no_vad
         )
     else:
         segments, info = transcribe_faster_whisper(
