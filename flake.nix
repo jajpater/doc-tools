@@ -21,6 +21,7 @@
               version = "0.1.0";
               src = src;
               dontBuild = true;
+              dontPatchShebangs = true;
               installPhase = ''
                 mkdir -p $out/bin
                 for f in "$src"/*; do
@@ -32,7 +33,6 @@
                   cp -f "$f" "$out/bin/$(basename "$f")"
                 done
                 chmod +x $out/bin/* 2>/dev/null || true
-                patchShebangs $out/bin
               '';
             };
         in
