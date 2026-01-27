@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly SCRIPT_NAME="$(basename "$0")"
+readonly VERSION="1.2.0"
+readonly RESOLUTION="300"
+readonly DEVICE="tiffg4"
+readonly OUTPUT_PATTERN="%04d.tif"
+
+show_help() {
+  cat << EOF
+Usage: $SCRIPT_NAME [OPTIONS] INPUT.pdf
+
+Convert PDF pages to TIFF images at 300 DPI resolution using G4 compression.
+
+ARGUMENTS:
+    INPUT.pdf    PDF file to convert
+
+OPTIONS:
+    -h, --help     Show this help message
+    -v, --version  Show version information
+    -o, --output   Output filename pattern (default: $OUTPUT_PATTERN)
+    --verbose      Enable verbose output
+EOF
+}
+
+show_version() {
+  echo "$SCRIPT_NAME $VERSION"
+}
+
+need() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "Missing dependency: $1" >&2
+    exit 1
+  }
+}
+
+validate_input() {
+  local input_file="$1"
+  [[ -f "$input_file" ]] || { echo "Input not found: $input_file" >&2; exit 1; }
+  [[ -r "$input_file" ]] || { echo "Cannot read: $input_file" >&2; exit 1; }
+  if ! head -c 4 "$input_file" 2>/dev/null | grep -q "%PDF"; then
+    echo "WARNING: File may not be a valid PDF: $input_file" >&2
+  fi
+}
+
+main() {
+  local input_file=""
+  local output_pattern="$OUTPUT_PATTERN"
+  local verbose=""
+
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      -h|--help) show_help; exit 0 ;;
+      -v|--version) show_version; exit 0 ;;
+      -o|--output) output_pattern="$2"; shift 2 ;;
+      --verbose) verbose="1"; shift ;;
+      -*) echo "Unknown option: $1" >&2; show_help >&2; exit 1 ;;
+      *) [[ -z "$input_file" ]] || { echo "Multiple input files not supported" >&2; exit 1; }
+         input_file="$1"; shift ;;
+    esac
+  done
+
+  [[ -n "$input_file" ]] || { echo "Input PDF file is required" >&2; show_help >&2; exit 1; }
+
+  need gs
+  validate_input "$input_file"
+
+  if [[ -n "$verbose" ]]; then
+    echo "Converting: $input_file" >&2
+    echo "Resolution: ${RESOLUTION} DPI" >&2
+    echo "Output pattern: $output_pattern" >&2
+    echo "Device: $DEVICE (G4 compression)" >&2
+  fi
+
+  local gs_opts=(
+    -dNOPAUSE
+    -r"$RESOLUTION"
+    -sDEVICE="$DEVICE"
+    -dTextAlphaBits=4
+    -dGraphicsAlphaBits=4
+    -dBATCH
+    -sOutputFile="$output_pattern"
+  )
+  [[ -z "$verbose" ]] && gs_opts=(-q "${gs_opts[@]}")
+
+  gs "${gs_opts[@]}" "$input_file"
+}
+
+main "$@"

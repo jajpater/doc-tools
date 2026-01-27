@@ -1,0 +1,209 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/convert_common.sh"
+
+show_help() {
+    cat << EOF
+Gebruik: $(basename "$0") [OPTIES] [DIRECTORY]
+
+Converteert PPTX (.pptx) naar tekst (.txt).
+
+OPTIES:
+    --all                 Converteer alle bestanden (geen selectie prompt)
+    --select              Selecteer bestanden via fzf
+    --gui                 Gebruik wofi voor keuze (indien beschikbaar)
+    --file <path>         Voeg een specifiek bestand toe (repeatable)
+    --ext <ext>           Voeg extra input extensie toe (repeatable)
+    --rename              Vervang spaties in bestandsnamen door underscores
+    --force               Overschrijf bestaande outputbestanden
+    --dry-run             Toon wat er zou gebeuren
+    --verbose             Extra output
+    --stdout              Schrijf tekst naar stdout (per file), geen .txt output
+    -h, --help            Toon deze help
+EOF
+}
+
+DIRECTORY="."
+declare -a EXTS=("pptx")
+declare -a EXPLICIT_FILES=()
+MODE=""
+MODE_FROM_FLAG=0
+RENAME=0
+FORCE=0
+DRY_RUN=0
+VERBOSE=0
+USE_GUI=0
+STDOUT=0
+DIR_SET=0
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --all) MODE="all"; MODE_FROM_FLAG=1; shift ;;
+        --select) MODE="select"; MODE_FROM_FLAG=1; shift ;;
+        --gui) USE_GUI=1; shift ;;
+        --file) [[ $# -ge 2 ]] || die "--file requires a path"; EXPLICIT_FILES+=("$2"); shift 2 ;;
+        --ext) [[ $# -ge 2 ]] || die "--ext requires a value"; EXTS+=("$2"); shift 2 ;;
+        --rename) RENAME=1; shift ;;
+        --force) FORCE=1; shift ;;
+        --dry-run) DRY_RUN=1; shift ;;
+        --verbose) VERBOSE=1; shift ;;
+        --stdout) STDOUT=1; shift ;;
+        -h|--help) show_help; exit 0 ;;
+        -*) die "Onbekende optie: $1" ;;
+        *)
+            if [[ $DIR_SET -eq 1 ]]; then
+                die "Te veel argumenten: $1"
+            fi
+            DIRECTORY="$1"
+            DIR_SET=1
+            shift
+            ;;
+    esac
+done
+
+check_dep "unzip" "nixpkgs#unzip"
+check_dep "perl" "nixpkgs#perl"
+check_dep "fzf" "nixpkgs#fzf"
+ensure_dir "$DIRECTORY"
+if [[ $USE_GUI -eq 1 ]]; then
+    check_dep "wofi" "nixpkgs#wofi"
+fi
+
+if [[ $RENAME -eq 1 ]]; then
+    if [[ ${#EXPLICIT_FILES[@]} -gt 0 ]]; then
+        renamed=()
+        for f in "${EXPLICIT_FILES[@]}"; do
+            [[ -e "$f" ]] || die "Bestand niet gevonden: $f"
+            renamed+=("$(rename_file_if_space "$f")")
+        done
+        EXPLICIT_FILES=("${renamed[@]}")
+    fi
+    rename_spaces_in_dir "$DIRECTORY" "${EXTS[@]}"
+fi
+
+declare -a CANDIDATES=()
+if [[ -n "${NAUTILUS_SCRIPT_SELECTED_FILE_PATHS:-}" ]]; then
+    mapfile -d '' -t nautilus_files < <(read_nautilus_selected_files)
+    if [[ ${#nautilus_files[@]} -gt 0 ]]; then
+        EXPLICIT_FILES+=("${nautilus_files[@]}")
+        [[ -z "$MODE" ]] && MODE="all"
+    fi
+fi
+
+if [[ -z "$MODE" && ${#EXPLICIT_FILES[@]} -gt 0 ]]; then
+    MODE="all"
+fi
+
+if [[ ${#EXPLICIT_FILES[@]} -gt 0 ]]; then
+    mapfile -d '' -t explicit_deduped < <(dedupe_files "${EXPLICIT_FILES[@]}")
+    CANDIDATES+=("${explicit_deduped[@]}")
+fi
+
+if [[ ${#EXPLICIT_FILES[@]} -eq 0 || $MODE_FROM_FLAG -eq 1 ]]; then
+    mapfile -d '' -t found < <(collect_files_by_ext "$DIRECTORY" "${EXTS[@]}")
+    CANDIDATES+=("${found[@]}")
+fi
+
+mapfile -d '' -t CANDIDATES < <(dedupe_files "${CANDIDATES[@]}")
+
+if [[ ${#CANDIDATES[@]} -eq 0 ]]; then
+    die "Geen inputbestanden gevonden."
+fi
+
+if [[ -z "$MODE" ]]; then
+    if [[ $USE_GUI -eq 1 ]]; then
+        MODE="$(prompt_mode_gui)"
+    else
+        MODE="$(prompt_mode "${#CANDIDATES[@]}")"
+    fi
+fi
+
+declare -a SELECTED=()
+if [[ "$MODE" == "select" ]]; then
+    if [[ $USE_GUI -eq 1 ]]; then
+        mapfile -t SELECTED < <(choose_files_wofi_multi "${CANDIDATES[@]}")
+    else
+        mapfile -t SELECTED < <(choose_files_fzf "${CANDIDATES[@]}")
+    fi
+else
+    SELECTED=("${CANDIDATES[@]}")
+fi
+
+if [[ ${#SELECTED[@]} -eq 0 ]]; then
+    echo "ERROR: Geen bestanden geselecteerd." >&2
+    exit 2
+fi
+
+extract_pptx_text() {
+    local pptx_file="$1"
+    local verbose="$2"
+    local nslides
+    nslides="$(unzip -l "$pptx_file" ppt/slides/slide*.xml | awk '{print $2}' | tail -1)"
+    if [[ -z "$nslides" ]]; then
+        return 1
+    fi
+    if [[ "$verbose" -eq 1 ]]; then
+        echo "PPTX_FILENAME = $pptx_file"
+        echo "TOTAL SLIDE COUNT = $nslides"
+    fi
+    local idx
+    for idx in $(seq 1 "$nslides"); do
+        if [[ "$verbose" -eq 1 ]]; then
+            echo " "
+            echo "SLIDE $idx OF $nslides"
+            echo " "
+        fi
+        unzip -qc "$pptx_file" "ppt/slides/slide${idx}.xml" | perl -e 'while(<>) { if (@list = ($_ =~ m/\<a:t\>(.+?)\<\/a:t\>/g)) { print "$_\n" for @list } }'
+    done
+}
+
+failed=0
+for pptx_file in "${SELECTED[@]}"; do
+    [[ -e "$pptx_file" ]] || continue
+
+    base_name="$(basename "$pptx_file")"
+    base_name_no_ext="${base_name%.*}"
+    txt_file="$(dirname "$pptx_file")/$base_name_no_ext.txt"
+
+    if [[ $STDOUT -eq 0 && -e "$txt_file" && $FORCE -eq 0 ]]; then
+        echo "Bestaat al, overslaan: $txt_file"
+        continue
+    fi
+
+    if [[ $VERBOSE -eq 1 ]]; then
+        if [[ $STDOUT -eq 1 ]]; then
+            echo "Converteer: $pptx_file → stdout"
+        else
+            echo "Converteer: $pptx_file → $txt_file"
+        fi
+    fi
+
+    if [[ $DRY_RUN -eq 1 ]]; then
+        if [[ $STDOUT -eq 1 ]]; then
+            echo "Zou converteren: $pptx_file → stdout"
+        else
+            echo "Zou converteren: $pptx_file → $txt_file"
+        fi
+        continue
+    fi
+
+    if [[ $STDOUT -eq 1 ]]; then
+        if ! extract_pptx_text "$pptx_file" "$VERBOSE"; then
+            failed=1
+            echo "Fout bij conversie: $pptx_file" >&2
+        fi
+    else
+        if extract_pptx_text "$pptx_file" "$VERBOSE" > "$txt_file"; then
+            echo "Omgezet: $pptx_file → $txt_file"
+        else
+            failed=1
+            echo "Fout bij conversie: $pptx_file" >&2
+        fi
+    fi
+done
+
+if [[ $failed -ne 0 ]]; then
+    exit 3
+fi

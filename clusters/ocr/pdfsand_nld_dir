@@ -1,0 +1,13 @@
+#!/bin/bash
+# OCR all PDFs in the current directory using pdfsandwich (Dutch).
+#
+# Usage:
+#   ./pdfsand_nld_dir
+#
+# Dependencies:
+#   pdfsandwich (with tesseract language data for nld)
+
+for f in *.pdf
+do
+    pdfsandwich -lang nld "$f"
+done

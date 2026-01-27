@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo "Usage: $(basename "$0") INPUT.pdf [OUTPUT_PATTERN]" >&2
+  exit 1
+}
+
+need() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "Missing dependency: $1" >&2
+    exit 1
+  }
+}
+
+[[ $# -lt 1 || $# -gt 2 ]] && usage
+input="$1"
+output_pattern="${2:-%04d.tif}"
+[[ -f "$input" ]] || { echo "Input not found: $input" >&2; exit 1; }
+
+need gs
+
+gs -dNOPAUSE -q -r600x600 -sDEVICE=tiffg4 \
+  -dTextAlphaBits=4 -dGraphicsAlphaBits=4 -dBATCH \
+  -sOutputFile="$output_pattern" "$input"

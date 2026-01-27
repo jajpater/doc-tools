@@ -1,0 +1,215 @@
+#!/bin/bash
+# EPUB XHTML to Multiple Formats Converter
+# Generic converter for any EPUB XHTML files to markdown, org-mode, and typst
+# Combines preprocessing and pandoc conversion
+
+set -e  # Exit on any error
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PREPROCESS_SCRIPT="$SCRIPT_DIR/epub-preprocess"
+
+usage() {
+    echo "Usage: $0 input_file.xhtml [output_prefix] [options]"
+    echo ""
+    echo "Arguments:"
+    echo "  input_file.xhtml   The EPUB XHTML file to convert"
+    echo "  output_prefix      Optional prefix for output files (default: input filename without extension)"
+    echo ""
+    echo "Options:"
+    echo "  -md, --markdown    Convert to markdown only"
+    echo "  -org, --org-mode   Convert to org-mode only"
+    echo "  -typ, --typst      Convert to typst only"
+    echo "  -docx, --docx      Convert to docx only"
+    echo "  -h, --help         Show this help message"
+    echo ""
+    echo "This script will:"
+    echo "  1. Preprocess the XHTML file to make it pandoc-friendly"
+    echo "  2. Convert to requested format(s) (default: all four)"
+    echo "  3. Clean up temporary files"
+    echo ""
+    echo "Examples:"
+    echo "  epub-convert chapter01.xhtml"
+    echo "  epub-convert text/chapter01.xhtml my_chapter"
+    echo "  epub-convert chapter01.xhtml --markdown"
+    echo "  epub-convert chapter01.xhtml --docx"
+    exit 1
+}
+
+# Parse command line arguments
+CONVERT_MD=true
+CONVERT_ORG=true
+CONVERT_TYP=true
+CONVERT_DOCX=true
+FORMAT_SPECIFIED=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            usage
+            ;;
+        -md|--markdown)
+            if [[ $FORMAT_SPECIFIED == false ]]; then
+                CONVERT_MD=true
+                CONVERT_ORG=false
+                CONVERT_TYP=false
+                CONVERT_DOCX=false
+                FORMAT_SPECIFIED=true
+            fi
+            shift
+            ;;
+        -org|--org-mode)
+            if [[ $FORMAT_SPECIFIED == false ]]; then
+                CONVERT_MD=false
+                CONVERT_ORG=true
+                CONVERT_TYP=false
+                CONVERT_DOCX=false
+                FORMAT_SPECIFIED=true
+            fi
+            shift
+            ;;
+        -typ|--typst)
+            if [[ $FORMAT_SPECIFIED == false ]]; then
+                CONVERT_MD=false
+                CONVERT_ORG=false
+                CONVERT_TYP=true
+                CONVERT_DOCX=false
+                FORMAT_SPECIFIED=true
+            fi
+            shift
+            ;;
+        -docx|--docx)
+            if [[ $FORMAT_SPECIFIED == false ]]; then
+                CONVERT_MD=false
+                CONVERT_ORG=false
+                CONVERT_TYP=false
+                CONVERT_DOCX=true
+                FORMAT_SPECIFIED=true
+            fi
+            shift
+            ;;
+        -*)
+            echo "Unknown option $1"
+            usage
+            ;;
+        *)
+            if [[ -z "$INPUT_FILE" ]]; then
+                INPUT_FILE="$1"
+            elif [[ -z "$OUTPUT_PREFIX" ]]; then
+                OUTPUT_PREFIX="$1"
+            else
+                echo "Too many arguments"
+                usage
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$INPUT_FILE" ]]; then
+    echo "Error: No input file specified"
+    usage
+fi
+
+if [[ ! -f "$INPUT_FILE" ]]; then
+    echo "Error: Input file '$INPUT_FILE' not found"
+    exit 1
+fi
+
+# Determine output prefix
+if [[ -z "$OUTPUT_PREFIX" ]]; then
+    OUTPUT_PREFIX="$(basename "$INPUT_FILE" .xhtml)"
+    OUTPUT_PREFIX="$(basename "$OUTPUT_PREFIX" .html)"
+fi
+
+# Check if preprocessing script exists
+if [[ ! -f "$PREPROCESS_SCRIPT" ]]; then
+    echo "Error: Preprocessing script not found at $PREPROCESS_SCRIPT"
+    exit 1
+fi
+
+# Check if pandoc is available
+if ! command -v pandoc &> /dev/null; then
+    echo "Error: pandoc is not installed or not in PATH"
+    echo "Install with: sudo apt install pandoc (Ubuntu/Debian) or brew install pandoc (macOS)"
+    exit 1
+fi
+
+echo "Converting '$INPUT_FILE' with output prefix: '$OUTPUT_PREFIX'"
+echo ""
+
+# Step 1: Preprocess the XHTML
+echo "Step 1: Preprocessing XHTML..."
+PROCESSED_FILE="${OUTPUT_PREFIX}_processed.xhtml"
+python3 "$PREPROCESS_SCRIPT" "$INPUT_FILE" "$PROCESSED_FILE"
+
+if [[ ! -f "$PROCESSED_FILE" ]]; then
+    echo "Error: Preprocessing failed"
+    exit 1
+fi
+
+# Step 2: Convert to requested formats
+if [[ $CONVERT_MD == true ]]; then
+    echo ""
+    echo "Step 2a: Converting to Markdown..."
+    pandoc "$PROCESSED_FILE" -o "${OUTPUT_PREFIX}.md" \
+        --from html \
+        --to markdown \
+        --wrap=none \
+        --markdown-headings=atx \
+        --standalone
+    echo "Created: ${OUTPUT_PREFIX}.md"
+fi
+
+if [[ $CONVERT_ORG == true ]]; then
+    echo ""
+    echo "Step 2b: Converting to Org-mode..."
+    pandoc "$PROCESSED_FILE" -o "${OUTPUT_PREFIX}.org" \
+        --from html \
+        --to org \
+        --wrap=none \
+        --standalone
+    echo "Created: ${OUTPUT_PREFIX}.org"
+fi
+
+if [[ $CONVERT_TYP == true ]]; then
+    echo ""
+    echo "Step 2c: Converting to Typst..."
+    pandoc "$PROCESSED_FILE" -o "${OUTPUT_PREFIX}.typ" \
+        --from html \
+        --to typst \
+        --wrap=none \
+        --standalone
+    echo "Created: ${OUTPUT_PREFIX}.typ"
+fi
+
+if [[ $CONVERT_DOCX == true ]]; then
+    echo ""
+    echo "Step 2d: Converting to DOCX..."
+    pandoc "$PROCESSED_FILE" -o "${OUTPUT_PREFIX}.docx" \
+        --from html \
+        --to docx \
+        --standalone
+    echo "Created: ${OUTPUT_PREFIX}.docx"
+fi
+
+# Step 3: Clean up temporary file
+echo ""
+echo "Step 3: Cleaning up..."
+rm "$PROCESSED_FILE"
+echo "Removed temporary file: $PROCESSED_FILE"
+
+echo ""
+echo "Conversion complete! Output files:"
+[[ $CONVERT_MD == true ]] && echo "  - ${OUTPUT_PREFIX}.md (Markdown)"
+[[ $CONVERT_ORG == true ]] && echo "  - ${OUTPUT_PREFIX}.org (Org-mode)"
+[[ $CONVERT_TYP == true ]] && echo "  - ${OUTPUT_PREFIX}.typ (Typst)"
+[[ $CONVERT_DOCX == true ]] && echo "  - ${OUTPUT_PREFIX}.docx (Word Document)"
+echo ""
+echo "Notes:"
+echo "  - Check image paths if images are not displaying correctly"
+echo "  - Greek/Hebrew text should be preserved"
+if [[ $CONVERT_TYP == true ]]; then
+    echo "  - For Typst compilation:"
+    echo "    From text directory: typst compile --root ../.. ${OUTPUT_PREFIX}.typ"
+    echo "    From EPUB root: typst compile text/${OUTPUT_PREFIX}.typ"
+fi

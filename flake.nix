@@ -1,0 +1,93 @@
+{
+  description = "Personal scripts - packaged for Nix";
+
+  inputs = {
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+  };
+
+  outputs = { self, nixpkgs }:
+    let
+      systems = [ "x86_64-linux" ];
+      forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f system);
+    in
+    {
+      packages = forAllSystems (system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+          lib = pkgs.lib;
+          mkScriptsPackage = name: src:
+            pkgs.stdenvNoCC.mkDerivation {
+              pname = name;
+              version = "0.1.0";
+              src = src;
+              dontBuild = true;
+              installPhase = ''
+                mkdir -p $out/bin
+                for f in "$src"/*; do
+                  [ -f "$f" ] || continue
+                  case "$f" in
+                    *.md|*.txt) continue ;;
+                    *__pycache__*) continue ;;
+                  esac
+                  cp -f "$f" "$out/bin/$(basename "$f")"
+                done
+                chmod +x $out/bin/* 2>/dev/null || true
+                patchShebangs $out/bin
+              '';
+            };
+        in
+        {
+          audio-tools = mkScriptsPackage "audio-tools" ./clusters/audio;
+          pdf-tools = mkScriptsPackage "pdf-tools" ./clusters/pdf-tools;
+          ocr-tools = mkScriptsPackage "ocr-tools" ./clusters/ocr;
+          planning-tools = mkScriptsPackage "planning-tools" ./clusters/planning;
+          fs-tools = mkScriptsPackage "fs-tools" ./clusters/fs-tools;
+          conversion-tools = mkScriptsPackage "conversion-tools" ./clusters/conversion;
+
+          mineru = pkgs.callPackage ./packages/mineru.nix { };
+          mineru-full = pkgs.callPackage ./packages/mineru.nix {
+            extras = [ "vlm" "pipeline" "api" "gradio" "vllm" "lmdeploy" ];
+          };
+          mineru-cuda = pkgs.callPackage ./packages/mineru.nix {
+            extras = [ "vlm" "pipeline" "api" "gradio" "vllm" "lmdeploy" ];
+            torch = if pkgs.python3Packages ? torchWithCuda then pkgs.python3Packages.torchWithCuda else null;
+          };
+          mineru-rocm = pkgs.callPackage ./packages/mineru.nix {
+            extras = [ "vlm" "pipeline" "api" "gradio" "vllm" "lmdeploy" ];
+            torch = if pkgs.python3Packages ? torchWithRocm then pkgs.python3Packages.torchWithRocm else null;
+          };
+
+          all-scripts = pkgs.symlinkJoin {
+            name = "all-scripts";
+            paths = [
+              self.packages.${system}.audio-tools
+              self.packages.${system}.pdf-tools
+              self.packages.${system}.ocr-tools
+              self.packages.${system}.planning-tools
+              self.packages.${system}.fs-tools
+              self.packages.${system}.conversion-tools
+            ];
+          };
+
+          default = self.packages.${system}.all-scripts;
+        });
+
+      devShells = forAllSystems (system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+        in
+        {
+          audio = import ./devshells/audio.nix { inherit pkgs; };
+          pdf-tools = import ./devshells/pdf-tools.nix { inherit pkgs; };
+          ocr = import ./devshells/ocr.nix { inherit pkgs; };
+          planning = import ./devshells/planning.nix { inherit pkgs; };
+          mineru = import ./devshells/mineru.nix { inherit pkgs; };
+          default = pkgs.mkShell {
+            packages = with pkgs; [
+              git
+              python3
+            ];
+          };
+        });
+    };
+}

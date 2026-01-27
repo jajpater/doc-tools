@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+need() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "Missing dependency: $1" >&2
+    exit 1
+  }
+}
+
+need convert
+
+shopt -s nullglob
+pdfs=( *.pdf )
+shopt -u nullglob
+
+if [[ ${#pdfs[@]} -eq 0 ]]; then
+  echo "Geen PDF bestanden gevonden in $(pwd)" >&2
+  exit 1
+fi
+
+for pdf in "${pdfs[@]}"; do
+  convert -density 300 "$pdf" "${pdf}.tif"
+done

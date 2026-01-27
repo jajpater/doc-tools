@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""
+EPUB XHTML Preprocessor for Pandoc Conversion
+Generic preprocessor for any EPUB XHTML files to make them pandoc-friendly.
+
+Usage: epub-preprocess input.xhtml [output.xhtml]
+"""
+
+import re
+import sys
+import os
+from pathlib import Path
+
+def fix_image_paths(content, input_dir):
+    """Fix relative image paths for EPUB structure and Typst compilation"""
+    # Determine if we're in OEBPS/text/ directory structure
+    input_path = Path(input_dir).resolve()
+    
+    # Check if we're in a typical EPUB text directory structure
+    is_epub_text_dir = (
+        input_path.name == 'text' and 
+        input_path.parent.name == 'OEBPS'
+    )
+    
+    if is_epub_text_dir:
+        # For EPUB structure, keep original image paths as ../image/
+        # These work correctly with Typst when using --root argument
+        patterns = [
+            # Only fix absolute paths to relative if needed
+            (r'src="/image/', 'src="../image/'),
+            (r'src="/images/', 'src="../images/'),
+            (r'src="/img/', 'src="../img/'),
+        ]
+    else:
+        # For other structures, be conservative  
+        patterns = [
+            # Only fix absolute paths to relative
+            (r'src="/image/', 'src="../image/'),
+            (r'src="/images/', 'src="../images/'),
+            (r'src="/img/', 'src="../img/'),
+        ]
+    
+    for old_pattern, new_pattern in patterns:
+        content = re.sub(old_pattern, new_pattern, content)
+    
+    return content
+
+def clean_epub_markup(content):
+    """Remove EPUB-specific markup that might confuse pandoc"""
+    # Remove epub:type attributes
+    content = re.sub(r'\s+epub:type="[^"]*"', '', content)
+    
+    # Remove various e-reader specific IDs and classes
+    content = re.sub(r'\s+id="kobo\.[^"]*"', '', content)
+    content = re.sub(r'\s+id="kindle\.[^"]*"', '', content)
+    content = re.sub(r'\s+class="koboSpan"', '', content)
+    content = re.sub(r'\s+class="kindleSpan"', '', content)
+    
+    # Remove XML namespace declarations on individual elements
+    content = re.sub(r'\s+xmlns="http://www\.w3\.org/1999/xhtml"', '', content)
+    
+    # Remove other common e-reader markup
+    content = re.sub(r'\s+data-[^=]*="[^"]*"', '', content)
+    
+    return content
+
+def simplify_spans(content):
+    """Simplify nested span structures while preserving semantic content"""
+    # Protect important spans (Greek/Hebrew text, emphasis, etc.)
+    protected_classes = ['sym', 'greek', 'hebrew', 'emphasis', 'strong', 'italic']
+    
+    for cls in protected_classes:
+        content = re.sub(f'<span class="{cls}">', f'<!--{cls.upper()}_START-->', content)
+        # Count and replace matching end tags
+        start_count = content.count(f'<!--{cls.upper()}_START-->')
+        content = re.sub(r'</span>', f'<!--{cls.upper()}_END-->', content, count=start_count)
+    
+    # Remove spans that only contain e-reader IDs or are otherwise empty of semantic meaning
+    content = re.sub(r'<span[^>]*?id="[^"]*"[^>]*?>(.*?)</span>', r'\1', content)
+    content = re.sub(r'<span[^>]*?class="[^"]*Span"[^>]*?>(.*?)</span>', r'\1', content)
+    
+    # Restore protected spans
+    for cls in protected_classes:
+        content = re.sub(f'<!--{cls.upper()}_START-->', f'<span class="{cls}">', content)
+        content = re.sub(f'<!--{cls.upper()}_END-->', '</span>', content)
+    
+    return content
+
+def clean_pagebreaks(content):
+    """Convert pagebreaks to simple comments or remove them"""
+    # Convert various pagebreak formats to HTML comments
+    pagebreak_patterns = [
+        (r'<a[^>]*?epub:type="pagebreak"[^>]*?title="(\d+)"[^>]*?/?>', r'<!-- Page \1 -->'),
+        (r'<a[^>]*?id="page(\d+)"[^>]*?/?>', r'<!-- Page \1 -->'),
+        (r'<span[^>]*?epub:type="pagebreak"[^>]*?title="(\d+)"[^>]*?/?>', r'<!-- Page \1 -->'),
+        (r'<div[^>]*?class="pagebreak"[^>]*?data-page="(\d+)"[^>]*?/?>', r'<!-- Page \1 -->'),
+    ]
+    
+    for pattern, replacement in pagebreak_patterns:
+        content = re.sub(pattern, replacement, content)
+    
+    return content
+
+def preserve_structure(content):
+    """Ensure important structural elements are preserved"""
+    # Make sure headings are properly formatted (remove class clutter but keep structure)
+    content = re.sub(r'<h([1-6])([^>]*)class="[^"]*"([^>]*)>', r'<h\1\2\3>', content)
+    
+    # Clean up paragraphs but preserve them
+    content = re.sub(r'<p([^>]*)class="[^"]*"([^>]*)>', r'<p\1\2>', content)
+    
+    # Preserve lists
+    content = re.sub(r'<([uo]l)([^>]*)class="[^"]*"([^>]*)>', r'<\1\2\3>', content)
+    content = re.sub(r'<li([^>]*)class="[^"]*"([^>]*)>', r'<li\1\2>', content)
+    
+    return content
+
+def preserve_semantic_markup(content):
+    """Ensure semantic text markup is preserved"""
+    # This handles Greek, Hebrew, emphasis, etc.
+    # The simplify_spans function already handles this, but this provides extra protection
+    return content
+
+def preprocess_xhtml(input_file, output_file=None):
+    """Main preprocessing function"""
+    input_path = Path(input_file)
+    
+    if output_file is None:
+        output_file = input_path.parent / f"{input_path.stem}_processed{input_path.suffix}"
+    
+    output_path = Path(output_file)
+    
+    print(f"Preprocessing {input_file} -> {output_file}")
+    
+    # Read the input file
+    try:
+        with open(input_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except UnicodeDecodeError:
+        # Try with different encoding if UTF-8 fails
+        with open(input_file, 'r', encoding='latin1') as f:
+            content = f.read()
+    
+    # Apply preprocessing steps
+    input_dir = input_path.parent
+    content = fix_image_paths(content, input_dir)
+    content = clean_epub_markup(content)
+    content = clean_pagebreaks(content)
+    content = simplify_spans(content)
+    content = preserve_structure(content)
+    content = preserve_semantic_markup(content)
+    
+    # Write the processed file
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_file, 'w', encoding='utf-8') as f:
+        f.write(content)
+    
+    print(f"Preprocessing complete. Processed file: {output_file}")
+    return output_file
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: epub-preprocess input_file.xhtml [output_file.xhtml]")
+        print("If output_file is not specified, it will be input_file_processed.xhtml")
+        print()
+        print("This script preprocesses EPUB XHTML files to make them suitable for pandoc conversion.")
+        print("It removes e-reader specific markup, fixes image paths, and preserves semantic content.")
+        sys.exit(1)
+    
+    input_file = sys.argv[1]
+    output_file = sys.argv[2] if len(sys.argv) > 2 else None
+    
+    if not os.path.exists(input_file):
+        print(f"Error: Input file {input_file} not found")
+        sys.exit(1)
+    
+    try:
+        processed_file = preprocess_xhtml(input_file, output_file)
+        print(f"\nTo convert with pandoc, you can now use:")
+        print(f"pandoc '{processed_file}' -o output.md")
+        print(f"pandoc '{processed_file}' -o output.org") 
+        print(f"pandoc '{processed_file}' -o output.typ")
+        
+    except Exception as e:
+        print(f"Error during preprocessing: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

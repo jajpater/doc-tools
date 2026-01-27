@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo "Usage: $(basename "$0") [OUTPUT.pdf]" >&2
+  exit 1
+}
+
+need() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "Missing dependency: $1" >&2
+    exit 1
+  }
+}
+
+[[ $# -gt 1 ]] && usage
+output="${1:-resultaat.pdf}"
+
+need tiffcp
+need tiff2pdf
+
+shopt -s nullglob
+tiffs=( *.tif *.tiff )
+shopt -u nullglob
+
+if [[ ${#tiffs[@]} -eq 0 ]]; then
+  echo "Geen TIFF bestanden gevonden in $(pwd)" >&2
+  exit 1
+fi
+
+tmp_tiff="$(mktemp /tmp/tiffstopdf.XXXXXX.tiff)"
+cleanup() { rm -f "$tmp_tiff"; }
+trap cleanup EXIT
+
+tiffcp "${tiffs[@]}" "$tmp_tiff"
+tiff2pdf -o "$output" "$tmp_tiff"

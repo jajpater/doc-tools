@@ -1,0 +1,10 @@
+# Python requirements for personal utility scripts
+# Install with: pip install -r requirements.txt
+
+# Weather forecast script dependencies
+requests>=2.25.0
+
+# Optional: For improved type checking and linting during development
+# mypy>=1.0.0
+# black>=22.0.0
+# flake8>=4.0.0
