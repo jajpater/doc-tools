@@ -104,6 +104,8 @@ python3Packages.buildPythonApplication rec {
 
   propagatedBuildInputs = lib.unique (baseDeps ++ selectedExtras);
   nativeBuildInputs = [ pkgs.ninja ];
+  dontBuild = true;
+  buildPhase = ":";
 
   pythonImportsCheck = [ "mineru" ];
 
