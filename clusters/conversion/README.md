@@ -9,8 +9,9 @@ This directory contains small conversion utilities and helpers.
 - `org_to_typ`: Convert Org-mode to Typst; adds A5 page header and removes horizontal rules.
 - `org_to_tex`: Convert Org-mode to LaTeX.
 - `docx_to_org`: Convert DOCX to Org-mode.
+- `docx_to_md`: Convert DOCX to Markdown.
 - `docx_to_pdf`: Convert DOCX to PDF.
-- `docx_to_txt`: Convert DOCX to plain text (docx2txt).
+- `docx_to_txt`: Convert DOCX to plain text (pandoc).
 - `compile-typst`: Compile Typst files to PDF.
 - `pptx_to_txt`: Extract slide text from PPTX files.
 - `pptx_notes_to_txt`: Extract speaker notes from PPTX files.

@@ -8,7 +8,7 @@ show_help() {
     cat << EOF
 Gebruik: $(basename "$0") [OPTIES] [DIRECTORY]
 
-Converteert DOCX (.docx) naar tekst (.txt) via pandoc.
+Converteert DOCX (.docx) naar Markdown (.md).
 
 OPTIES:
     --all                 Converteer alle bestanden (geen selectie prompt)
@@ -40,8 +40,8 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --all) MODE="all"; MODE_FROM_FLAG=1; shift ;;
         --select) MODE="select"; MODE_FROM_FLAG=1; shift ;;
-        --gui) USE_GUI=1; shift ;;
         --file) [[ $# -ge 2 ]] || die "--file requires a path"; EXPLICIT_FILES+=("$2"); shift 2 ;;
+        --gui) USE_GUI=1; shift ;;
         --ext) [[ $# -ge 2 ]] || die "--ext requires a value"; EXTS+=("$2"); shift 2 ;;
         --rename) RENAME=1; shift ;;
         --force) FORCE=1; shift ;;
@@ -138,24 +138,24 @@ for docx_file in "${SELECTED[@]}"; do
 
     base_name="$(basename "$docx_file")"
     base_name_no_ext="${base_name%.*}"
-    txt_file="$(dirname "$docx_file")/$base_name_no_ext.txt"
+    md_file="$(dirname "$docx_file")/$base_name_no_ext.md"
 
-    if [[ -e "$txt_file" && $FORCE -eq 0 ]]; then
-        echo "Bestaat al, overslaan: $txt_file"
+    if [[ -e "$md_file" && $FORCE -eq 0 ]]; then
+        echo "Bestaat al, overslaan: $md_file"
         continue
     fi
 
     if [[ $VERBOSE -eq 1 ]]; then
-        echo "Converteer: $docx_file → $txt_file"
+        echo "Converteer: $docx_file → $md_file"
     fi
 
     if [[ $DRY_RUN -eq 1 ]]; then
-        echo "Zou converteren: $docx_file → $txt_file"
+        echo "Zou converteren: $docx_file → $md_file"
         continue
     fi
 
-    if pandoc -f docx -t plain "$docx_file" -o "$txt_file"; then
-        echo "Omgezet: $docx_file → $txt_file"
+    if pandoc -f docx -t markdown "$docx_file" -o "$md_file"; then
+        echo "Omgezet: $docx_file → $md_file"
     else
         failed=1
         echo "Fout bij conversie: $docx_file" >&2

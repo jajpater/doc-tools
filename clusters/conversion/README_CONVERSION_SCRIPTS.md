@@ -9,6 +9,7 @@ Common usage and selection flow for scripts in this directory.
 - `org_to_typ`
 - `org_to_tex`
 - `docx_to_org`
+- `docx_to_md`
 - `docx_to_pdf`
 - `docx_to_txt`
 - `compile-typst`
@@ -40,7 +41,7 @@ Notes:
 Minimum dependencies per script are checked at runtime:
 - `pandoc` for `md_to_*`, `org_to_*`, `docx_to_*`
 - `typst` for `compile-typst`
-- `docx2txt` for `docx_to_txt`
+- `pandoc` for `docx_to_txt`
 - `unzip` + `perl` for `pptx_to_txt` and `pptx_notes_to_txt`
 - `fzf` is required for CLI selection
 - `wofi` is required if `--gui` is used
