@@ -5,7 +5,6 @@ import sys
 from pathlib import Path
 from typing import Iterable, List
 
-from faster_whisper import WhisperModel
 from tqdm import tqdm
 
 
@@ -156,12 +155,42 @@ def pick_device(device: str, verbose: bool = False) -> str:
     return "cpu"
 
 
-def transcribe(audio_path: Path, model_name: str, device: str, compute: str, vad_filter: bool):
+class Segment:
+    def __init__(self, **kwargs):
+        self.start = kwargs.get("start", 0.0)
+        self.end = kwargs.get("end", 0.0)
+        self.text = kwargs.get("text", "")
+        self.avg_logprob = kwargs.get("avg_logprob")
+        self.no_speech_prob = kwargs.get("no_speech_prob")
+        self.temperature = kwargs.get("temperature")
+        self.tokens = kwargs.get("tokens")
+
+
+class Info:
+    def __init__(self, language: str, language_probability: float | None):
+        self.language = language
+        self.language_probability = language_probability if language_probability is not None else 0.0
+
+
+def transcribe_faster_whisper(
+    audio_path: Path, model_name: str, device: str, compute: str, vad_filter: bool
+):
+    from faster_whisper import WhisperModel
+
     try:
         model = WhisperModel(model_name, device=device, compute_type=compute)
     except RuntimeError as e:
         if "libcublas" in str(e) or "CUDA" in str(e):
             print("CUDA niet beschikbaar, val terug op CPU...")
+            device = "cpu"
+            compute = "int8"
+            model = WhisperModel(model_name, device=device, compute_type=compute)
+        else:
+            raise
+    except ValueError as e:
+        # CTranslate2 build without CUDA support (common on ROCm setups)
+        if "CTranslate2 package was not compiled with CUDA support" in str(e):
+            print("CTranslate2 heeft geen CUDA support, val terug op CPU...")
             device = "cpu"
             compute = "int8"
             model = WhisperModel(model_name, device=device, compute_type=compute)
@@ -177,6 +206,23 @@ def transcribe(audio_path: Path, model_name: str, device: str, compute: str, vad
     return segments, info
 
 
+def transcribe_openai_whisper(
+    audio_path: Path, model_name: str, device: str, _compute: str, _vad_filter: bool
+):
+    try:
+        import whisper
+    except ImportError as e:
+        raise RuntimeError("Python package 'openai-whisper' is required for backend=whisper") from e
+
+    use_fp16 = device != "cpu"
+    model = whisper.load_model(model_name, device=device)
+    result = model.transcribe(str(audio_path), fp16=use_fp16)
+
+    segments = [Segment(**seg) for seg in result.get("segments", [])]
+    info = Info(result.get("language", "unknown"), result.get("language_probability"))
+    return segments, info
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Transcribe audio with faster-whisper")
     parser.add_argument("audio", help="Pad naar audiobestand (mp3/wav/...)")
@@ -189,6 +235,12 @@ def main() -> int:
     parser.add_argument("-o", "--output", help="Output pad (bestand, basisnaam of directory)")
     parser.add_argument("--model", default="large-v3", help="Modelnaam of pad (default: large-v3)")
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "rocm"])
+    parser.add_argument(
+        "--backend",
+        default="faster-whisper",
+        choices=["faster-whisper", "whisper"],
+        help="Backend: faster-whisper (default) or whisper (openai-whisper)",
+    )
     parser.add_argument(
         "--compute-type",
         default=None,
@@ -218,9 +270,14 @@ def main() -> int:
     if args.verbose:
         print(f"Model laden: {args.model} op {device} ({compute})...")
 
-    segments, info = transcribe(
-        audio_path, args.model, device, compute, vad_filter=not args.no_vad
-    )
+    if args.backend == "whisper":
+        segments, info = transcribe_openai_whisper(
+            audio_path, args.model, device, compute, vad_filter=not args.no_vad
+        )
+    else:
+        segments, info = transcribe_faster_whisper(
+            audio_path, args.model, device, compute, vad_filter=not args.no_vad
+        )
 
     if args.verbose:
         print("Bestanden schrijven...")

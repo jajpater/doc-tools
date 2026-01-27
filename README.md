@@ -27,6 +27,12 @@ List available outputs:
 nix flake show
 ```
 
+## Audio notes (ROCm)
+
+- `media-transcribe-rocm-torch` uses the torch backend (`openai-whisper`) for AMD/ROCm.
+- `media-transcribe-cuda` uses faster-whisper (CTranslate2) for NVIDIA/CUDA.
+- `media-transcribe-cpu` is the CPU fallback.
+
 ## OCR languages
 
 The OCR devshell installs common Tesseract language packs when available:
