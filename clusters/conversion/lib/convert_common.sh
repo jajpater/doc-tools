@@ -216,14 +216,16 @@ choose_files_wofi_multi() {
     [[ -n "$choice" ]] || return 0
 
     # If user picked a line, map it back to a single index.
-    if [[ "$choice" =~ ^[0-9]+\\)\\  ]]; then
-        local idx="${choice%%)*}"
-        idx="${idx//[^0-9]/}"
-        if [[ -n "$idx" ]]; then
-            echo "${files[$((idx - 1))]}"
-            return 0
-        fi
-    fi
+    case "$choice" in
+        [0-9]*") "*)
+            local idx="${choice%%)*}"
+            idx="${idx//[^0-9]/}"
+            if [[ -n "$idx" ]]; then
+                echo "${files[$((idx - 1))]}"
+                return 0
+            fi
+            ;;
+    esac
 
     # Otherwise treat input as a list of indices.
     mapfile -d '' -t indices < <(parse_indices "$choice" "$count")

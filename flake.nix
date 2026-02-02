@@ -25,12 +25,16 @@
               installPhase = ''
                 mkdir -p $out/bin
                 for f in "$src"/*; do
-                  [ -f "$f" ] || continue
+                  [ -e "$f" ] || continue
                   case "$f" in
                     *.md|*.txt) continue ;;
                     *__pycache__*) continue ;;
                   esac
-                  cp -f "$f" "$out/bin/$(basename "$f")"
+                  if [ -d "$f" ]; then
+                    cp -r "$f" "$out/bin/$(basename "$f")"
+                  elif [ -f "$f" ]; then
+                    cp -f "$f" "$out/bin/$(basename "$f")"
+                  fi
                 done
                 chmod +x $out/bin/* 2>/dev/null || true
               '';
