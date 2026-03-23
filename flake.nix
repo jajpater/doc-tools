@@ -15,23 +15,15 @@
         let
           pkgs = import nixpkgs { inherit system; };
           lib = pkgs.lib;
-          conversionPython = pkgs.python3.withPackages (ps: with ps; [
-            pypandoc
-            pyyaml
-            gitpython
-            python-docx
-          ]);
-          mkScriptsPackage = { name, src, pythonEnv ? null, runtimePaths ? [ ] }:
+          mkScriptsPackage = name: src:
             pkgs.stdenvNoCC.mkDerivation {
               pname = name;
               version = "0.1.0";
               src = src;
               dontBuild = true;
               dontPatchShebangs = true;
-              nativeBuildInputs = [ pkgs.makeWrapper ];
               installPhase = ''
                 mkdir -p $out/bin
-                mkdir -p $out/libexec
                 for f in "$src"/*; do
                   [ -e "$f" ] || continue
                   case "$f" in
@@ -45,44 +37,14 @@
                   fi
                 done
                 chmod +x $out/bin/* 2>/dev/null || true
-
-                if [ -n "${if pythonEnv != null then "1" else ""}" ]; then
-                  runtime_path="${lib.makeBinPath runtimePaths}"
-                  for f in "$out/bin"/*; do
-                    [ -f "$f" ] || continue
-                    if head -n 1 "$f" | grep -q '^#!/usr/bin/env python3'; then
-                      base="$(basename "$f")"
-                      mv "$f" "$out/libexec/$base"
-                      makeWrapper "${pythonEnv}/bin/python3" "$out/bin/$base" \
-                        --add-flags "$out/libexec/$base" \
-                        ${if runtimePaths != [ ] then ''--prefix PATH : "$runtime_path"'' else ""}
-                    fi
-                  done
-                fi
               '';
             };
         in
         {
-          audio-tools = mkScriptsPackage {
-            name = "audio-tools";
-            src = ./clusters/audio;
-          };
-          pdf-tools = mkScriptsPackage {
-            name = "pdf-tools";
-            src = ./clusters/pdf-tools;
-          };
-          ocr-tools = mkScriptsPackage {
-            name = "ocr-tools";
-            src = ./clusters/ocr;
-          };
-          conversion-tools = mkScriptsPackage {
-            name = "conversion-tools";
-            src = ./clusters/conversion;
-            pythonEnv = conversionPython;
-            runtimePaths = with pkgs; [
-              pandoc
-            ];
-          };
+          audio-tools = mkScriptsPackage "audio-tools" ./clusters/audio;
+          pdf-tools = mkScriptsPackage "pdf-tools" ./clusters/pdf-tools;
+          ocr-tools = mkScriptsPackage "ocr-tools" ./clusters/ocr;
+          conversion-tools = mkScriptsPackage "conversion-tools" ./clusters/conversion;
 
           all-scripts = pkgs.symlinkJoin {
             name = "all-scripts";
