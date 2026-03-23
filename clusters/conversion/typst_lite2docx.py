@@ -6,12 +6,44 @@ A lightweight Typst-inspired markup parser that generates DOCX files.
 Supports a subset of Typst syntax for document formatting.
 """
 import re
-from docx import Document
-from docx.shared import Pt, RGBColor, Cm, Mm
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+import argparse
+from pathlib import Path
+
+Document = None
+Pt = None
+RGBColor = None
+Cm = None
+Mm = None
+WD_ALIGN_PARAGRAPH = None
+
+
+def ensure_docx_imports():
+    """Importeer python-docx pas wanneer het echt nodig is."""
+    global Document, Pt, RGBColor, Cm, Mm, WD_ALIGN_PARAGRAPH
+
+    if Document is not None:
+        return
+
+    try:
+        from docx import Document as _Document
+        from docx.shared import Pt as _Pt, RGBColor as _RGBColor, Cm as _Cm, Mm as _Mm
+        from docx.enum.text import WD_ALIGN_PARAGRAPH as _WD_ALIGN_PARAGRAPH
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "De Python-module 'python-docx' ontbreekt. "
+            "Installeer die dependency of gebruik de Nix `conversion-tools` package/devshell."
+        ) from exc
+
+    Document = _Document
+    Pt = _Pt
+    RGBColor = _RGBColor
+    Cm = _Cm
+    Mm = _Mm
+    WD_ALIGN_PARAGRAPH = _WD_ALIGN_PARAGRAPH
 
 class TypstLiteGenerator:
     def __init__(self):
+        ensure_docx_imports()
         self.doc = Document()
 
         # Default: A4 paper met 2.5cm margins
@@ -404,6 +436,8 @@ class TypstLiteGenerator:
         """Parse #set page() commando
 
         Ondersteunt:
+        - #set page("a4")
+        - #set page("a5")
         - #set page(paper: "a4")
         - #set page(paper: "a5")
         - #set page(margin: 2.5cm)
@@ -419,7 +453,10 @@ class TypstLiteGenerator:
         params_str = match.group(1)
 
         # Parse paper parameter
-        paper_match = re.search(r'paper:\s*"(a4|a5)"', params_str)
+        # Ondersteunt zowel #set page("a4") als #set page(paper: "a4")
+        paper_match = re.search(r'^\s*"(a4|a5)"\s*$', params_str)
+        if not paper_match:
+            paper_match = re.search(r'paper:\s*"(a4|a5)"', params_str)
         paper = paper_match.group(1) if paper_match else None
 
         # Parse margin parameter
@@ -474,14 +511,14 @@ class TypstLiteGenerator:
     def parse_list_item(self, line):
         """Parse een list item en return (is_list, indent_level, content)
 
-        List items beginnen met - gevolgd door een spatie.
+        List items beginnen met - of • gevolgd door een spatie.
         Indentatie bepaalt het nesting level (2 spaties = 1 level).
 
         Returns:
             tuple: (is_list_item, indent_level, content_text)
         """
         # Check of de regel start met optionele spaties gevolgd door - en een spatie
-        match = re.match(r'^( *)- (.+)$', line)
+        match = re.match(r'^( *)[-•] (.+)$', line)
         if not match:
             return (False, 0, '')
 
@@ -747,26 +784,99 @@ class TypstLiteGenerator:
 
         return p
 
+    def add_heading(self, text, level):
+        """Voeg een heading toe op basis van Typst = syntax."""
+        heading_level = min(max(level, 1), 9)
+        p = self.doc.add_heading(level=heading_level)
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after = Pt(0)
+
+        run = p.add_run(text)
+        run.font.name = self.default_font
+        return p
+
+    def is_anchor_line(self, line):
+        """Detecteer Typst anchors zoals <mijn-label>."""
+        return bool(re.match(r'^\s*<[^>]+>\s*$', line))
+
+    def parse_heading(self, line):
+        """Parse Typst headings zoals = Titel of == Subtitel."""
+        match = re.match(r'^(=+)\s+(.*)$', line)
+        if not match:
+            return (False, 0, '')
+        return (True, len(match.group(1)), match.group(2).strip())
+
+    def is_special_line(self, line):
+        """Bepaal of een regel apart afgehandeld moet worden."""
+        stripped = line.strip()
+        if not stripped:
+            return True
+        if stripped.startswith('#set page('):
+            return True
+        if stripped.startswith('#set text('):
+            return True
+        if stripped.startswith('#v('):
+            return True
+        if stripped == '#pagebreak()':
+            return True
+        if self.is_anchor_line(line):
+            return True
+        is_heading, _, _ = self.parse_heading(line)
+        if is_heading:
+            return True
+        is_list, _, _ = self.parse_list_item(line)
+        if is_list:
+            return True
+        is_enum, _, _ = self.parse_enum_item(line)
+        return is_enum
+
+    def normalize_joined_text(self, parts):
+        """Voeg fysieke regels samen tot een enkele paragraaftekst."""
+        return ' '.join(part.strip() for part in parts if part.strip())
+
     def process_file(self, input_file):
         """Verwerk het markup bestand"""
         with open(input_file, 'r', encoding='utf-8') as f:
             lines = f.readlines()
 
-        for line in lines:
-            line = line.rstrip()
+        paragraph_parts = []
+        i = 0
+
+        def flush_paragraph():
+            nonlocal paragraph_parts
+            if not paragraph_parts:
+                return
+            text = self.normalize_joined_text(paragraph_parts)
+            paragraph_parts = []
+            if not text:
+                return
+            attrs = self.parse_line_commands(text)
+            if attrs['text']:
+                self.add_line(attrs)
+            else:
+                self.doc.add_paragraph()
+
+        while i < len(lines):
+            line = lines[i].rstrip()
+            stripped = line.strip()
 
             # #set page() - pagina setup
-            if line.strip().startswith('#set page('):
-                self.parse_set_page(line.strip())
+            if stripped.startswith('#set page('):
+                flush_paragraph()
+                self.parse_set_page(stripped)
+                i += 1
                 continue
 
             # #set text() - font/size setup
-            if line.strip().startswith('#set text('):
-                self.parse_set_text(line.strip())
+            if stripped.startswith('#set text('):
+                flush_paragraph()
+                self.parse_set_text(stripped)
+                i += 1
                 continue
 
             # #v(12pt) of #v(1em) - lege regel met specifieke font size
-            if line.strip().startswith('#v('):
+            if stripped.startswith('#v('):
+                flush_paragraph()
                 spacing_pt = self.parse_v_spacing(line.strip())
                 # Maak een lege paragraph met de juiste font properties
                 p = self.doc.add_paragraph()
@@ -778,35 +888,97 @@ class TypstLiteGenerator:
                 run = p.add_run(' ')
                 run.font.size = Pt(spacing_pt)
                 run.font.name = self.default_font
+                i += 1
                 continue
 
             # #pagebreak()
-            if line.strip() == '#pagebreak()':
+            if stripped == '#pagebreak()':
+                flush_paragraph()
                 self.doc.add_page_break()
+                i += 1
                 continue
 
             # Skip volledig lege regels
-            if not line.strip():
+            if not stripped:
+                flush_paragraph()
+                i += 1
+                continue
+
+            # Typst anchors zoals <label> zijn metadata, geen documentinhoud
+            if self.is_anchor_line(line):
+                flush_paragraph()
+                i += 1
+                continue
+
+            # Headings met = en ==
+            is_heading, level, heading_text = self.parse_heading(line)
+            if is_heading:
+                flush_paragraph()
+                self.add_heading(heading_text, level)
+                i += 1
                 continue
 
             # Check voor bullet list items (- Item)
             is_list, level, content = self.parse_list_item(line)
             if is_list:
-                self.add_list_item(content, level)
+                flush_paragraph()
+                item_parts = [content.rstrip('\\').strip()]
+                line_has_break = line.rstrip().endswith('\\')
+                i += 1
+
+                while i < len(lines):
+                    next_line = lines[i].rstrip()
+                    next_stripped = next_line.strip()
+
+                    if not next_stripped:
+                        break
+                    if self.is_special_line(next_line):
+                        break
+
+                    item_parts.append(next_line.rstrip('\\').strip())
+                    line_has_break = next_line.rstrip().endswith('\\')
+                    i += 1
+
+                    if line_has_break:
+                        break
+
+                self.add_list_item(self.normalize_joined_text(item_parts), level)
                 continue
 
             # Check voor numbered list items (+ Item)
             is_enum, level, content = self.parse_enum_item(line)
             if is_enum:
-                self.add_enum_item(content, level)
+                flush_paragraph()
+                item_parts = [content.rstrip('\\').strip()]
+                line_has_break = line.rstrip().endswith('\\')
+                i += 1
+
+                while i < len(lines):
+                    next_line = lines[i].rstrip()
+                    next_stripped = next_line.strip()
+
+                    if not next_stripped:
+                        break
+                    if self.is_special_line(next_line):
+                        break
+
+                    item_parts.append(next_line.rstrip('\\').strip())
+                    line_has_break = next_line.rstrip().endswith('\\')
+                    i += 1
+
+                    if line_has_break:
+                        break
+
+                self.add_enum_item(self.normalize_joined_text(item_parts), level)
                 continue
 
-            # Parse en voeg toe
-            attrs = self.parse_line_commands(line)
-            if attrs['text']:
-                self.add_line(attrs)
-            else:
-                self.doc.add_paragraph()
+            paragraph_parts.append(line.rstrip('\\'))
+            i += 1
+
+            if line.rstrip().endswith('\\'):
+                flush_paragraph()
+
+        flush_paragraph()
 
     def save(self, output_file):
         """Save het document"""
@@ -814,18 +986,42 @@ class TypstLiteGenerator:
         print(f"DOCX gegenereerd: {output_file}")
 
 def main():
-    import sys
+    parser = argparse.ArgumentParser(
+        description="Converteer een beperkte Typst Lite syntax naar DOCX."
+    )
+    parser.add_argument(
+        "input_file",
+        help="Pad naar het invoerbestand met Typst Lite markup.",
+    )
+    parser.add_argument(
+        "output_file",
+        nargs="?",
+        default=None,
+        help="Pad naar het uitvoerbestand (.docx). Overschrijft `--output` als beide zijn gezet.",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        dest="output_flag",
+        default=None,
+        help="Pad naar het uitvoerbestand (.docx).",
+    )
+    args = parser.parse_args()
 
-    if len(sys.argv) < 2:
-        print("Gebruik: python typst_lite2docx.py <input.txt> [output.docx]")
-        sys.exit(1)
+    input_path = Path(args.input_file)
+    if not input_path.exists():
+        parser.error(f"invoerbestand bestaat niet: {input_path}")
+    if not input_path.is_file():
+        parser.error(f"invoerpad is geen bestand: {input_path}")
 
-    input_file = sys.argv[1]
-    output_file = sys.argv[2] if len(sys.argv) > 2 else 'output.docx'
+    output_file = args.output_file or args.output_flag or "output.docx"
 
-    generator = TypstLiteGenerator()
-    generator.process_file(input_file)
-    generator.save(output_file)
+    try:
+        generator = TypstLiteGenerator()
+        generator.process_file(str(input_path))
+        generator.save(output_file)
+    except RuntimeError as exc:
+        parser.exit(1, f"Fout: {exc}\n")
 
 if __name__ == '__main__':
     main()
