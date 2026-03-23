@@ -25,6 +25,7 @@ This directory contains small conversion utilities and helpers.
 - `batch-vectorize.sh`: Batch convert JPG/WEBP to SVG using ImageMagick + potrace.
 - `convert-html2docx-comments`: Convert HTML comments to DOCX comments (Perl).
 - `extractnotes`: Extract PPTX speaker notes with slide numbers and titles into a `.notes` file (uses xmlstarlet).
+- `typst_lite2docx.py`: Convert Typst Lite to DOCX.
 - `hrule.lua`: Pandoc Lua filter to remove horizontal rules.
 - `commentary`: Comment-preserving docx/markdown converter (uses pandoc via pypandoc).
 - `lib/convert_common.sh`: Shared helpers for selection, deps, and file handling.
@@ -40,7 +41,3 @@ The conversion scripts share a common selection flow. See `README_CONVERSION_SCR
 ## commentary details
 - `commentary` converts between docx and markdown while preserving comments and optionally tracked changes.
 - Dependencies: `pandoc`, `pypandoc`, `PyYAML`, `gitpython`.
-
-## typst_lite2docx
-This script used to convert typstfiles to docx, has been moved to a separate typ-docx repo.
-
