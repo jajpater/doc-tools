@@ -20,6 +20,7 @@ OPTIES:
     --force               Overschrijf bestaande outputbestanden
     --dry-run             Toon wat er zou gebeuren
     --verbose             Extra output
+    --keep-numbers        Behoud lijstnummers zonder [@N]-cookie (Python-voorbewerking)
     -h, --help            Toon deze help
 EOF
 }
@@ -33,6 +34,7 @@ RENAME=0
 FORCE=0
 DRY_RUN=0
 VERBOSE=0
+KEEP_NUMBERS=0
 USE_GUI=0
 DIR_SET=0
 
@@ -47,6 +49,7 @@ while [[ $# -gt 0 ]]; do
         --force) FORCE=1; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
         --verbose) VERBOSE=1; shift ;;
+        --keep-numbers) KEEP_NUMBERS=1; shift ;;
         -h|--help) show_help; exit 0 ;;
         -*) die "Onbekende optie: $1" ;;
         *)
@@ -66,8 +69,25 @@ ensure_dir "$DIRECTORY"
 if [[ $USE_GUI -eq 1 ]]; then
     check_dep "wofi" "nixpkgs#wofi"
 fi
+if [[ $KEEP_NUMBERS -eq 1 ]]; then
+    check_dep "python3" "nixpkgs#python3"
+fi
 
 filter_path="$SCRIPT_DIR/hrule.lua"
+
+convert_org() {
+    local org_file="$1"
+    local out="$2"
+    if [[ $KEEP_NUMBERS -eq 1 ]]; then
+        # Via stdin vanuit de map van het bestand, zodat #+include en
+        # afbeeldingen relatief aan het bronbestand blijven werken.
+        (cd "$(dirname "$org_file")" &&
+            python3 "$SCRIPT_DIR/lib/org_keep_list_numbers.py" "$(basename "$org_file")" |
+            pandoc -f org -t typst --lua-filter="${filter_path}" -o "$out")
+    else
+        pandoc -f org -t typst --lua-filter="${filter_path}" "$org_file" -o "$out"
+    fi
+}
 
 if [[ $RENAME -eq 1 ]]; then
     if [[ ${#EXPLICIT_FILES[@]} -gt 0 ]]; then
@@ -158,7 +178,7 @@ for org_file in "${SELECTED[@]}"; do
 
     tmp="$(mktemp)"
 
-    if pandoc -f org -t typst --lua-filter="${filter_path}" "$org_file" -o "$tmp"; then
+    if convert_org "$org_file" "$tmp"; then
         {
             printf '#set page("a5")\n\n'
             cat "$tmp"
