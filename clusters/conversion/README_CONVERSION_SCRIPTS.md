@@ -8,6 +8,7 @@ Common usage and selection flow for scripts in this directory.
 - `md_to_tex`
 - `org_to_typ`
 - `org_to_docx`
+- `org_to_md`
 - `org_to_tex`
 - `docx_to_org`
 - `docx_to_md`
@@ -39,6 +40,7 @@ Notes:
 - `--gui` uses wofi and supports multi-select by entering indices like `1 3 5-7`.
 
 ## Script-specific flags
+<<<<<<< HEAD
 `md_to_typ`:
 - `--comment-style line` (default) preserves HTML comments (`<!-- ... -->`) as
   Typst line comments (`//`), adding `//` to every line of a multiline comment.
@@ -54,6 +56,9 @@ style, literal `/*` and `*/` inside comment text become `/ *` and `* /` to keep
 the resulting Typst comment valid.
 
 `org_to_typ` and `org_to_docx`:
+=======
+`org_to_typ`, `org_to_docx`, and `org_to_md`:
+>>>>>>> b71b6242983bae8262f0851f8777bb8fca6cb99c
 - `--keep-numbers` keep the numbers of Org lists that don't start at 1 (see below)
 
 `org_to_docx`:
@@ -68,7 +73,7 @@ read as item 1 and comes out as `1.`. Only a counter cookie keeps the number:
 24. second verse
 ```
 
-The cookie is only needed on the first item; the next items count on. Both
+The cookie is only needed on the first item; the next items count on. These
 scripts honour cookies that are in the file. For files without cookies,
 `--keep-numbers` first runs `lib/org_keep_list_numbers.py`, which adds a cookie
 to the first item of every list that doesn't start at 1 and to every item where
