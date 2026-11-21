@@ -39,6 +39,20 @@ Notes:
 - `--gui` uses wofi and supports multi-select by entering indices like `1 3 5-7`.
 
 ## Script-specific flags
+`md_to_typ`:
+- `--comment-style line` (default) preserves HTML comments (`<!-- ... -->`) as
+  Typst line comments (`//`), adding `//` to every line of a multiline comment.
+- `--comment-style block` uses Typst block comments (`/* ... */`) instead.
+- `--no-comments` omits HTML comments, regardless of `--comment-style`.
+
+Comments are included by default, including comments within paragraphs. Their
+contents remain hidden in the rendered document; Markdown inside comments is
+kept as text. Inline line comments are wrapped in a Typst code block (`#{...}`)
+to preserve the spacing of the surrounding text. Comment examples in code
+blocks and inline code are left untouched, even with `--no-comments`. In block
+style, literal `/*` and `*/` inside comment text become `/ *` and `* /` to keep
+the resulting Typst comment valid.
+
 `org_to_typ` and `org_to_docx`:
 - `--keep-numbers` keep the numbers of Org lists that don't start at 1 (see below)
 

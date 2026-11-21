@@ -3,7 +3,7 @@
 This directory contains small conversion utilities and helpers.
 
 ## Conversion scripts
-- `md_to_typ`: Convert Markdown to Typst; adds A5 page header and removes horizontal rules.
+- `md_to_typ`: Convert Markdown to Typst; adds an A5 page header, converts horizontal rules to lines, and preserves HTML comments as Typst line comments (`//`). Use `--comment-style block` for `/* ... */` or `--no-comments` to omit comments.
 - `md_to_org`: Convert Markdown to Org-mode.
 - `md_to_tex`: Convert Markdown to LaTeX.
 - `org_to_typ`: Convert Org-mode to Typst; adds A5 page header and removes horizontal rules.

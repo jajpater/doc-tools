@@ -9,6 +9,7 @@ show_help() {
 Gebruik: $(basename "$0") [OPTIES] [DIRECTORY]
 
 Converteert Markdown (.md/.markdown) naar Typst (.typ).
+Behoudt HTML-comments (<!-- ... -->) standaard als Typst-regelcomments (//).
 
 OPTIES:
     --all                 Converteer alle bestanden (geen selectie prompt)
@@ -16,6 +17,8 @@ OPTIES:
     --gui                 Gebruik wofi voor keuze (indien beschikbaar)
     --file <path>         Voeg een specifiek bestand toe (repeatable)
     --ext <ext>           Voeg extra input extensie toe (repeatable, bv: txt)
+    --comment-style <stijl>  Commentstijl: line (//, standaard) of block (/* ... */)
+    --no-comments         Laat HTML-comments weg uit de output
     --rename              Vervang spaties in bestandsnamen door underscores
     --force               Overschrijf bestaande outputbestanden
     --dry-run             Toon wat er zou gebeuren
@@ -26,6 +29,8 @@ Voorbeelden:
     $(basename "$0")
     $(basename "$0") --select
     $(basename "$0") --file notes.txt --ext txt
+    $(basename "$0") --file notes.md --comment-style block
+    $(basename "$0") --file notes.md --no-comments
     $(basename "$0") /pad/naar/docs
 EOF
 }
@@ -41,6 +46,8 @@ DRY_RUN=0
 VERBOSE=0
 USE_GUI=0
 DIR_SET=0
+COMMENT_STYLE="line"
+KEEP_COMMENTS=1
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -67,6 +74,18 @@ while [[ $# -gt 0 ]]; do
             [[ $# -ge 2 ]] || die "--ext requires a value"
             EXTS+=("$2")
             shift 2
+            ;;
+        --comment-style)
+            [[ $# -ge 2 ]] || die "--comment-style vereist line of block"
+            case "$2" in
+                line|block) COMMENT_STYLE="$2" ;;
+                *) die "Ongeldige commentstijl: $2 (gebruik line of block)" ;;
+            esac
+            shift 2
+            ;;
+        --no-comments)
+            KEEP_COMMENTS=0
+            shift
             ;;
         --rename)
             RENAME=1
@@ -101,6 +120,10 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+if [[ $KEEP_COMMENTS -eq 0 ]]; then
+    COMMENT_STYLE="none"
+fi
 
 check_dep "pandoc" "nixpkgs#pandoc"
 check_dep "fzf" "nixpkgs#fzf"
@@ -208,7 +231,7 @@ for md_file in "${SELECTED[@]}"; do
         D
     }' "$md_file" > "$tmp_preprocessed"
 
-    if pandoc -f markdown-auto_identifiers -t typst --lua-filter="${filter_path}" "$tmp_preprocessed" -o "$tmp_output"; then
+    if MD_TO_TYP_COMMENT_STYLE="$COMMENT_STYLE" pandoc -f markdown-auto_identifiers -t typst --lua-filter="${filter_path}" --lua-filter="$SCRIPT_DIR/comments-to-typst.lua" "$tmp_preprocessed" -o "$tmp_output"; then
         {
             printf '#set page("a5")\n\n'
             cat "$tmp_output"
